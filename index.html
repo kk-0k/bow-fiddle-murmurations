@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>khalis khaleel</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #ffffff;
+            color: #000000;
+        }
+
+        #artist-name {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 2.5rem; /* [CHANGED] Increased font size */
+            z-index: 10;
+        }
+
+        #ui {
+            position: absolute;
+            bottom: 16px;
+            right: 24px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 7px;
+        }
+        #ui label {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 11px;
+            color: #bbb;
+            letter-spacing: 0.10em;
+        }
+        #ui select {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 11px;
+            color: #555;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #ddd;
+            outline: none;
+            padding: 2px 4px;
+            cursor: pointer;
+            appearance: none;
+        }
+        .ui-row { display: flex; align-items: center; gap: 8px; }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Essential to keep canvas behind the UI */
+        #boids-canvas { z-index: 3; }
+
+        /* Custom Grayscale Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #555;
+            cursor: pointer;
+            margin-top: -5px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: #ccc;
+        }
+        input[type=range]::-moz-range-thumb {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #555;
+            cursor: pointer;
+            border: none;
+        }
+        input[type=range]::-moz-range-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: #ccc;
+        }
+
+        /* Audio Overlay */
+        #audio-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Times New Roman', Times, serif;
+            transition: opacity 0.5s;
+        }
+        #audio-overlay h1 {
+            font-weight: normal;
+            letter-spacing: 0.1em;
+            margin-bottom: 30px;
+        }
+        #start-audio-btn {
+            background: none;
+            border: 1px solid #000;
+            padding: 12px 24px;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #start-audio-btn:hover {
+            background: #000;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="audio-overlay">
+        <h1>Murmurations over Bow Fiddle Rock</h1>
+        <button id="start-audio-btn">View</button>
+    </div>
+
+    <div id="artist-name">khalis khaleel</div>
+
+    <div id="ui">
+        <div class="ui-row">
+            <label>key</label>
+            <select id="keySelect">
+                <option value="C">C</option>
+                <option value="C#">C#</option>
+                <option value="D">D</option>
+                <option value="D#">D#</option>
+                <option value="E">E</option>
+                <option value="F">F</option>
+                <option value="F#">F#</option>
+                <option value="G">G</option>
+                <option value="G#">G#</option>
+                <option value="A">A</option>
+                <option value="A#">A#</option>
+                <option value="B" selected>B</option>
+            </select>
+        </div>
+        <div class="ui-row">
+            <label>mode</label>
+            <select id="modeSelect">
+                <option value="major">major</option>
+                <option value="minor">minor</option>
+                <option value="ionian">ionian</option>
+                <option value="dorian">dorian</option>
+                <option value="phrygian">phrygian</option>
+                <option value="lydian" selected>lydian</option>
+                <option value="mixolydian">mixolydian</option>
+                <option value="aeolian">aeolian</option>
+                <option value="locrian">locrian</option>
+            </select>
+        </div>
+        <div class="ui-row">
+            <label>birds</label>
+            <input type="range" id="birdCount" min="1" max="2000" value="2000" style="width: 80px;">
+            <label id="birdCountLabel" style="min-width: 30px; text-align: right;">2000</label>
+        </div>
+    </div>
+
+    <canvas id="boids-canvas"></canvas>
+
+    <script>
+        // --- Web Audio API Integration ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioInitialized = false;
+
+        const masterGain = audioCtx.createGain();
+        const filterNode = audioCtx.createBiquadFilter();
+        
+        const fac1Panner = audioCtx.createPanner();
+        const fac2Panner = audioCtx.createPanner();
+        const fac3Panner = audioCtx.createPanner();
+        fac1Panner.panningModel = 'HRTF';
+        fac2Panner.panningModel = 'HRTF';
+        fac3Panner.panningModel = 'HRTF';
+        
+        const reverbNode = audioCtx.createConvolver();
+        const reverbGain = audioCtx.createGain();
+        reverbGain.gain.value = 0.5; 
+
+        function generateImpulseResponse() {
+            let sampleRate = audioCtx.sampleRate;
+            let length = sampleRate * 2.5; 
+            let impulse = audioCtx.createBuffer(2, length, sampleRate);
+            let left = impulse.getChannelData(0);
+            let right = impulse.getChannelData(1);
+            for (let i = 0; i < length; i++) {
+                let decay = Math.exp(-i / (sampleRate * 0.8)); 
+                left[i] = (Math.random() * 2 - 1) * decay;
+                right[i] = (Math.random() * 2 - 1) * decay;
+            }
+            return impulse;
+        }
+        reverbNode.buffer = generateImpulseResponse();
+
+        const pulseGain = audioCtx.createGain();
+        pulseGain.gain.value = 0.8;
+        pulseGain.connect(audioCtx.destination);
+        pulseGain.connect(reverbNode);
+
+        const pingPongDelayL = audioCtx.createDelay(2.0);
+        const pingPongDelayR = audioCtx.createDelay(2.0);
+        pingPongDelayL.delayTime.value = 0.35; 
+        pingPongDelayR.delayTime.value = 0.35; 
+
+        const pingPongFeedbackL = audioCtx.createGain();
+        const pingPongFeedbackR = audioCtx.createGain();
+        pingPongFeedbackL.gain.value = 0.65; 
+        pingPongFeedbackR.gain.value = 0.65;
+
+        const pingPongMerger = audioCtx.createChannelMerger(2);
+
+        pingPongDelayL.connect(pingPongFeedbackL);
+        pingPongFeedbackL.connect(pingPongDelayR);
+        pingPongDelayR.connect(pingPongFeedbackR);
+        pingPongFeedbackR.connect(pingPongDelayL);
+
+        pingPongDelayL.connect(pingPongMerger, 0, 0); 
+        pingPongDelayR.connect(pingPongMerger, 0, 1); 
+        pingPongMerger.connect(pulseGain); 
+
+        masterGain.gain.value = 0;
+        filterNode.type = 'lowpass';
+        filterNode.Q.value = 2; 
+        
+        fac1Panner.connect(filterNode);
+        fac2Panner.connect(filterNode);
+        fac3Panner.connect(filterNode);
+        
+        filterNode.connect(masterGain);
+        masterGain.connect(audioCtx.destination); 
+        masterGain.connect(reverbNode);
+        reverbNode.connect(reverbGain);
+        reverbGain.connect(audioCtx.destination);
+
+        const vibratoLFO = audioCtx.createOscillator();
+        const vibratoGain = audioCtx.createGain();
+        vibratoLFO.type = 'sine';
+        vibratoLFO.frequency.value = 4.5; 
+        vibratoGain.gain.value = 12; 
+        vibratoLFO.connect(vibratoGain);
+
+        const droneOscillators = [];
+        const droneGains = [];
+        for (let i = 0; i < 18; i++) {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = i < 6 ? 'sine' : 'sawtooth'; 
+            gain.gain.value = 0;
+            if (i >= 12) vibratoGain.connect(osc.detune);
+            osc.connect(gain);
+            if (i < 6) gain.connect(fac1Panner);
+            else if (i < 12) gain.connect(fac2Panner);
+            else gain.connect(fac3Panner);
+            
+            droneOscillators.push(osc);
+            droneGains.push(gain);
+        }
+
+        const climbOscs = [];
+        const climbGains = [];
+        for (let i = 0; i < 4; i++) {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'triangle'; 
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(reverbNode); 
+            climbOscs.push(osc);
+            climbGains.push(gain);
+        }
+
+        const cursorOscs = [];
+        const cursorGains = [];
+        for (let i = 0; i < 3; i++) {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'triangle'; 
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(filterNode); 
+            cursorOscs.push(osc);
+            cursorGains.push(gain);
+        }
+
+        const dimOscs = [];
+        const dimGains = [];
+        const dimFilter = audioCtx.createBiquadFilter();
+        dimFilter.type = 'lowpass';
+        dimFilter.frequency.value = 280; 
+        dimFilter.connect(masterGain);
+
+        for (let i = 0; i < 4; i++) {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'triangle'; 
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(dimFilter);
+            dimOscs.push(osc);
+            dimGains.push(gain);
+        }
+
+        const spiralOsc = audioCtx.createOscillator();
+        const spiralGain = audioCtx.createGain();
+        const spiralFilter = audioCtx.createBiquadFilter();
+        
+        spiralOsc.type = 'sawtooth'; 
+        spiralGain.gain.value = 0;
+        spiralFilter.type = 'lowpass';
+        spiralFilter.frequency.value = 2500; 
+
+        const spiralLFO = audioCtx.createOscillator();
+        const spiralLFOGain = audioCtx.createGain();
+        spiralLFO.type = 'sine';
+        spiralLFO.frequency.value = 16; 
+        spiralLFOGain.gain.value = 40; 
+        
+        spiralLFO.connect(spiralLFOGain);
+        spiralLFOGain.connect(spiralOsc.detune);
+        spiralOsc.connect(spiralFilter);
+        spiralFilter.connect(spiralGain);
+        spiralGain.connect(pingPongDelayL);
+        spiralGain.connect(reverbNode);
+
+        const BASE_FREQS = { 'C': 130.81, 'C#': 138.59, 'D': 146.83, 'D#': 155.56, 'E': 164.81, 'F': 174.61, 'F#': 185.00, 'G': 196.00, 'G#': 207.65, 'A': 220.00, 'A#': 233.08, 'B': 246.94 };
+        const MODES = {
+            'major': [0, 2, 4, 5, 7, 9, 11], 'ionian': [0, 2, 4, 5, 7, 9, 11],
+            'minor': [0, 2, 3, 5, 7, 8, 10], 'aeolian': [0, 2, 3, 5, 7, 8, 10],
+            'dorian': [0, 2, 3, 5, 7, 9, 10], 'phrygian': [0, 1, 3, 5, 7, 8, 10],
+            'lydian': [0, 2, 4, 6, 7, 9, 11], 'mixolydian': [0, 2, 4, 5, 7, 9, 10],
+            'locrian': [0, 1, 3, 5, 6, 8, 10]
+        };
+
+        function getScaleFrequencies() {
+            let key = document.getElementById('keySelect').value;
+            let mode = document.getElementById('modeSelect').value;
+            let baseFreq = BASE_FREQS[key]; 
+            let intervals = MODES[mode];
+            let freqs = [];
+            for (let octave = 0; octave < 5; octave++) {
+                for (let interval of intervals) {
+                    freqs.push(baseFreq * Math.pow(2, octave + (interval / 12)));
+                }
+            }
+            return freqs;
+        }
+
+        function triggerZPulse(direction) {
+            if (!audioInitialized) return;
+            let now = audioCtx.currentTime;
+            let freqs = getScaleFrequencies();
+            
+            const arpIndices = direction === -1 ? [7, 9, 11, 14] : [14, 11, 9, 7]; 
+            
+            arpIndices.forEach((index, i) => {
+                let osc = audioCtx.createOscillator();
+                let filter = audioCtx.createBiquadFilter();
+                let gain = audioCtx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.value = freqs[index];
+                
+                let spacing = direction === -1 ? 0.08 : 0.12; 
+                let noteTime = now + (i * spacing); 
+                
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(6000, noteTime);
+                filter.frequency.exponentialRampToValueAtTime(300, noteTime + 0.3);
+                
+                gain.gain.setValueAtTime(0, noteTime);
+                gain.gain.linearRampToValueAtTime(0.045, noteTime + 0.015); 
+                gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.6); 
+                
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(pulseGain); 
+                gain.connect(pingPongDelayL); 
+                
+                osc.start(noteTime);
+                osc.stop(noteTime + 0.7);
+            });
+        }
+
+        document.getElementById('start-audio-btn').onclick = () => {
+            const overlay = document.getElementById('audio-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+            
+            audioCtx.resume();
+            if (!audioInitialized) {
+                droneOscillators.forEach(osc => osc.start());
+                cursorOscs.forEach(osc => osc.start()); 
+                climbOscs.forEach(osc => osc.start()); 
+                dimOscs.forEach(osc => osc.start()); 
+                spiralOsc.start(); 
+                spiralLFO.start(); 
+                vibratoLFO.start(); 
+                audioInitialized = true;
+            }
+        };
+
+        const keyMap = { 'z': 'C', 's': 'C#', 'x': 'D', 'd': 'D#', 'c': 'E', 'v': 'F', 'g': 'F#', 'b': 'G', 'h': 'G#', 'n': 'A', 'j': 'A#', 'm': 'B' };
+        window.addEventListener('keydown', (e) => {
+            const pressedKey = e.key.toLowerCase();
+            if (keyMap[pressedKey]) document.getElementById('keySelect').value = keyMap[pressedKey];
+        });
+
+        let audioMetrics = { 
+            cutoff: 800, swarmDensity: 0, chaos: 0,
+            fac1Voices: 3, fac2Voices: 3, fac3Voices: 3, cursorDensity: 0,
+            risingDensity: 0, harmonyStrength: 0, harmonyType: 'vortex',
+            fac1Pos: {x: 0, y: 0, z: 0}, fac2Pos: {x: 0, y: 0, z: 0}, fac3Pos: {x: 0, y: 0, z: 0}
+        };
+
+        function updateAudioEngine() {
+            if (!audioInitialized) return;
+
+            let now = audioCtx.currentTime;
+            let freqs = getScaleFrequencies();
+
+            // [CHANGED] Add baseline harmony volume so the drone continues smoothly underneath the spiral
+            let harmonyDroneVol = audioMetrics.harmonyStrength * 0.02; 
+            let baseVol = Math.pow(audioMetrics.swarmDensity, 3.0) * 0.05 + harmonyDroneVol; 
+            let chaosVol = Math.pow(audioMetrics.chaos, 2.0) * 0.4;
+            let targetVolume = baseVol + chaosVol; 
+            masterGain.gain.setTargetAtTime(targetVolume, now, 0.4); 
+
+            filterNode.frequency.setTargetAtTime(audioMetrics.cutoff, now, 0.05);
+
+            fac1Panner.positionX.setTargetAtTime(audioMetrics.fac1Pos.x, now, 0.5);
+            fac1Panner.positionY.setTargetAtTime(audioMetrics.fac1Pos.y, now, 0.5);
+            fac1Panner.positionZ.setTargetAtTime(audioMetrics.fac1Pos.z, now, 0.5);
+
+            fac2Panner.positionX.setTargetAtTime(audioMetrics.fac2Pos.x, now, 0.5);
+            fac2Panner.positionY.setTargetAtTime(audioMetrics.fac2Pos.y, now, 0.5);
+            fac2Panner.positionZ.setTargetAtTime(audioMetrics.fac2Pos.z, now, 0.5);
+
+            fac3Panner.positionX.setTargetAtTime(audioMetrics.fac3Pos.x, now, 0.5);
+            fac3Panner.positionY.setTargetAtTime(audioMetrics.fac3Pos.y, now, 0.5);
+            fac3Panner.positionZ.setTargetAtTime(audioMetrics.fac3Pos.z, now, 0.5);
+
+            const chordIndices = [0, 2, 4, 6, 8, 14]; 
+            
+            for (let i = 0; i < 6; i++) {
+                let f1Pitch = freqs[chordIndices[i]];
+                droneOscillators[i].frequency.setTargetAtTime(f1Pitch, now, 1.0);
+                if (i === 5) { 
+                    let flashLevel = audioMetrics.chaos > 0.15 ? Math.pow(audioMetrics.chaos, 1.5) * 0.5 : 0;
+                    droneGains[i].gain.setTargetAtTime(flashLevel, now, 0.05);
+                } else if (i < audioMetrics.fac1Voices) {
+                    droneGains[i].gain.setTargetAtTime((1.0 / audioMetrics.fac1Voices) * 0.4, now, 1.0); 
+                } else {
+                    droneGains[i].gain.setTargetAtTime(0, now, 1.0);
+                }
+
+                let f2Pitch = freqs[chordIndices[i]] / 2; 
+                droneOscillators[i+6].frequency.setTargetAtTime(f2Pitch, now, 1.0);
+                if (i === 5) { 
+                    let flashLevel = audioMetrics.chaos > 0.15 ? Math.pow(audioMetrics.chaos, 1.5) * 0.15 : 0;
+                    droneGains[i+6].gain.setTargetAtTime(flashLevel, now, 0.05);
+                } else if (i < audioMetrics.fac2Voices) {
+                    droneGains[i+6].gain.setTargetAtTime((1.0 / audioMetrics.fac2Voices) * 0.15, now, 1.0); 
+                } else {
+                    droneGains[i+6].gain.setTargetAtTime(0, now, 1.0);
+                }
+
+                let f3Pitch = freqs[chordIndices[i]]; 
+                droneOscillators[i+12].frequency.setTargetAtTime(f3Pitch, now, 1.0);
+                if (i === 5) { 
+                    let flashLevel = audioMetrics.chaos > 0.15 ? Math.pow(audioMetrics.chaos, 1.5) * 0.2 : 0;
+                    droneGains[i+12].gain.setTargetAtTime(flashLevel, now, 0.05);
+                } else if (i < audioMetrics.fac3Voices) {
+                    droneGains[i+12].gain.setTargetAtTime((1.0 / audioMetrics.fac3Voices) * 0.25, now, 1.0); 
+                } else {
+                    droneGains[i+12].gain.setTargetAtTime(0, now, 1.0);
+                }
+            }
+
+            let separationFactor = Math.max(0, 1.0 - (audioMetrics.swarmDensity * 2.0)); 
+            let noCollisionFactor = Math.max(0, 1.0 - (audioMetrics.chaos * 3.0));
+            let dimVol = separationFactor * noCollisionFactor * 0.06; 
+            
+            let dimRoot = freqs[0] / 2; 
+            const dimIntervals = [0, 3, 6, 9]; 
+            for (let i = 0; i < 4; i++) {
+                let pitch = dimRoot * Math.pow(2, dimIntervals[i] / 12);
+                dimOscs[i].frequency.setTargetAtTime(pitch, now, 0.5);
+                dimGains[i].gain.setTargetAtTime(dimVol / 4, now, 0.5);
+            }
+
+            if (audioMetrics.harmonyType === 'spiral_disk' && audioMetrics.harmonyStrength > 0.01) {
+                let vRoot = freqs[0] * Math.pow(2, 7/12); 
+                let arpNumNotes = 15;
+                let arpTick = Math.floor(now * 14) % (arpNumNotes * 2 - 2); 
+                let arpIndex = arpTick < arpNumNotes ? arpTick : (arpNumNotes * 2 - 2 - arpTick); 
+                
+                let octOffset = Math.floor(arpIndex / 3) - 1; 
+                let noteInChord = arpIndex % 3;
+                let semiOffset = noteInChord === 0 ? 0 : (noteInChord === 1 ? 4 : 7); 
+                
+                let spiralPitch = vRoot * Math.pow(2, octOffset) * Math.pow(2, semiOffset / 12);
+                spiralOsc.frequency.setTargetAtTime(spiralPitch, now, 0.02);
+                
+                let spiralVol = audioMetrics.harmonyStrength * 0.008; 
+                spiralGain.gain.setTargetAtTime(spiralVol, now, 0.1);
+            } else {
+                spiralGain.gain.setTargetAtTime(0, now, 0.5);
+            }
+
+            const climbIndices = [0, 2, 4, 7]; 
+            let climbT = (now * 12) % 4; 
+            let activeIndex = Math.floor(climbT);
+            let climbMasterVol = Math.pow(audioMetrics.risingDensity, 1.5) * 0.008; 
+
+            for(let i = 0; i < 4; i++) {
+                let highPitch = freqs[climbIndices[i] + 7] || freqs[climbIndices[i]] * 2;
+                climbOscs[i].frequency.setTargetAtTime(highPitch, now, 0.1); 
+                let vol = (i === activeIndex) ? climbMasterVol : 0;
+                climbGains[i].gain.setTargetAtTime(vol, now, 0.03); 
+            }
+
+            let compRoot = freqs[0] * Math.pow(2, 7/12) * 4; 
+            let compFreqs = [compRoot, compRoot * Math.pow(2, 4/12), compRoot * Math.pow(2, 7/12)];
+            let cursorVolume = (Math.pow(audioMetrics.cursorDensity, 1.5) * 0.05) / 3; 
+            for (let i = 0; i < 3; i++) {
+                cursorOscs[i].frequency.setTargetAtTime(compFreqs[i], now, 0.5);
+                cursorGains[i].gain.setTargetAtTime(cursorVolume, now, 0.1);
+            }
+        }
+
+        // --- Setup Canvas ---
+        const boidsCanvas = document.getElementById('boids-canvas');
+        const boidsCtx = boidsCanvas.getContext('2d');
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        // [NEW] Load the actual image directly into the JS pipeline for true 3D sorting!
+        const rockImg = new Image();
+        rockImg.src = 'image-2.png';
+        let rockImageLoaded = false;
+        rockImg.onload = () => { rockImageLoaded = true; };
+
+        // Generative ASCII Sea Canvas
+        const seaCanvas = document.createElement('canvas');
+        const seaCtx = seaCanvas.getContext('2d');
+        let lastSeaUpdate = 0; 
+
+        function generateAsciiSea() {
+            // [CHANGED] Overshoot dimensions to perfectly hide all edges and borders
+            seaCanvas.width = width + 100; 
+            seaCanvas.height = (height * 0.4) + 50; 
+            seaCtx.clearRect(0, 0, seaCanvas.width, seaCanvas.height);
+            
+            // Smooth fade-in from the horizon
+            let gradient = seaCtx.createLinearGradient(0, 0, 0, seaCanvas.height);
+            gradient.addColorStop(0, 'rgba(204, 204, 204, 0)'); 
+            gradient.addColorStop(0.15, 'rgba(204, 204, 204, 0.4)');
+            gradient.addColorStop(1, 'rgba(204, 204, 204, 1)');
+            seaCtx.fillStyle = gradient;
+            
+            let chars = ['~', '-', ' ', '.', '`'];
+            let currentY = 10;
+
+            while (currentY < seaCanvas.height) {
+                let progress = currentY / seaCanvas.height;
+                // [CHANGED] Exponential font scaling for 3D depth perception (tiny at horizon, large up close)
+                let fontSize = Math.floor(6 + 24 * Math.pow(progress, 1.8)); 
+                seaCtx.font = `${fontSize}px monospace`;
+
+                // Calculate chars needed to safely span the extended width
+                let estCharWidth = fontSize * 0.6;
+                let numChars = Math.floor(seaCanvas.width / estCharWidth) + 5;
+
+                let row = '';
+                for (let x = 0; x < numChars; x++) {
+                    row += chars[Math.floor(Math.random() * chars.length)];
+                }
+                
+                seaCtx.fillText(row, 0, currentY);
+                currentY += Math.max(fontSize * 0.8, 6); // Move down by line-height
+            }
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            boidsCanvas.width = width; boidsCanvas.height = height;
+            generateAsciiSea(); // Re-render sea on resize
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let mouse = { x: -1000, y: -1000 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        let time = 0;
+        let nextFlipCountdown = 300 + Math.random() * 300; 
+        let globalFlip = { timer: 0, faction: -1, zDirection: 1 };
+        
+        let currentHarmonyType = 'vortex';
+
+        // --- Boids Logic (True Murmuration) ---
+        class Boid {
+            constructor() {
+                let spawnAngle = Math.random() * Math.PI * 2;
+                let spawnRadius = Math.sqrt(Math.random()) * 150; 
+                this.x = (width / 2) + Math.cos(spawnAngle) * spawnRadius * 1.8; 
+                this.y = (height * 0.3) + Math.sin(spawnAngle) * spawnRadius; 
+                
+                // Reduced initial spawn speed by 30%
+                this.vx = (Math.random() - 0.5) * 2.8; 
+                this.vy = (Math.random() - 0.5) * 2.8;
+                this.z = Math.random() * 100; 
+                this.dz = (Math.random() - 0.5) * 1;
+                
+                this.lastVx = this.vx;
+                this.lastVy = this.vy;
+                
+                let randFaction = Math.random();
+                if (randFaction < 0.6) this.faction = 0;      
+                else if (randFaction < 0.8) this.faction = 1;      
+                else this.faction = 2;      
+                
+                this.curveDirection = this.faction === 1 ? -1 : 1;
+                this.breakoutTimer = 0;
+                this.breakoutForce = {x: 0, y: 0};
+                this.isMouseAttracted = Math.random() > 0.8;
+                this.mouseLoyaltyThreshold = Math.random();
+                this.isFollowingMouse = false;
+                this.kineticBoost = 0;
+                this.orbitRadius = 50 + Math.random() * 350; 
+                this.orbitOffset = Math.random() * Math.PI * 2; 
+            }
+
+            update(flock, currentHarmony = 0) {
+                if (Math.random() < 0.01) this.isMouseAttracted = Math.random() > 0.8;
+
+                if (Math.random() < 0.001) {
+                    let randFaction = Math.random();
+                    if (randFaction < 0.6) this.faction = 0;
+                    else if (randFaction < 0.8) this.faction = 1;
+                    else this.faction = 2;
+                    this.curveDirection = this.faction === 1 ? -1 : 1;
+                }
+
+                let separation = { x: 0, y: 0 };
+                let alignment = { x: 0, y: 0 };
+                let cohesion = { x: 0, y: 0 };
+                let zAlignment = 0, zCohesion = 0, alignTotal = 0;
+                let perception = 60, sepDistance = 25;
+
+                for (let other of flock) {
+                    if (other === this) continue;
+                    let dx = this.x - other.x;
+                    let dy = this.y - other.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < perception) {
+                        let isSameFaction = (other.faction === this.faction);
+                        let weight = isSameFaction ? 3.0 : (0.1 + 2.9 * currentHarmony); 
+
+                        alignment.x += other.vx * weight;
+                        alignment.y += other.vy * weight;
+                        zAlignment += other.dz * weight;
+                        
+                        cohesion.x += other.x * weight;
+                        cohesion.y += other.y * weight;
+                        zCohesion += other.z * weight;
+                        alignTotal += weight;
+
+                        if (dist < sepDistance && dist > 0) {
+                            if (isSameFaction || currentHarmony > 0.5) {
+                                separation.x += (dx / dist) * 1.0; 
+                                separation.y += (dy / dist) * 1.0;
+                            } else {
+                                let repulse = 15.0 / Math.max(dist, 1); 
+                                let repulseWeight = 1.0 - currentHarmony; 
+                                separation.x += (dx / dist) * repulse * repulseWeight + (Math.random() - 0.5) * 0.5; 
+                                separation.y += (dy / dist) * repulse * repulseWeight + (Math.random() - 0.5) * 0.5;
+                                zAlignment += (this.z > other.z ? 1 : -1) * repulse * 0.5 * repulseWeight; 
+                            }
+                        }
+                    }
+                }
+
+                if (alignTotal > 0) {
+                    alignment.x /= alignTotal;
+                    alignment.y /= alignTotal;
+                    zAlignment /= alignTotal;
+                    cohesion.x = (cohesion.x / alignTotal) - this.x;
+                    cohesion.y = (cohesion.y / alignTotal) - this.y;
+                    zCohesion = (zCohesion / alignTotal) - this.z;
+                }
+
+                this.vx += separation.x * 0.08 + alignment.x * 0.02 + cohesion.x * 0.008;
+                this.vy += separation.y * 0.08 + alignment.y * 0.02 + cohesion.y * 0.008;
+                this.dz += zAlignment * 0.06 + zCohesion * 0.005;
+
+                let targetX, targetY;
+                
+                // [CHANGED] Shifted independent flight paths slightly up so they hover beautifully over the new sea
+                if (this.faction === 2) {
+                    let orbitDriftX = Math.sin(time * 0.15) * (width * 0.35); 
+                    let maxYDrift = (height * 0.25) - 40;
+                    let orbitDriftY = Math.sin(time * 0.22) * maxYDrift;
+                    targetX = (width / 2) + orbitDriftX;
+                    targetY = (height * 0.3) + orbitDriftY;
+                } else {
+                    let fPhase = (this.faction / 2) * Math.PI * 2;
+                    let orbitDriftX = Math.sin(time * 0.3) * 150 + Math.sin(time * 0.5 + fPhase) * 60 * this.curveDirection;
+                    let orbitDriftY = Math.cos(time * 0.4) * 60 + Math.cos(time * 0.6 + fPhase) * 30;
+                    targetX = (width / 2) + orbitDriftX;
+                    targetY = (height * 0.3) + orbitDriftY; 
+                }
+
+                if (currentHarmony > 0) {
+                    let harmTargetX, harmTargetY;
+                    if (currentHarmonyType === 'spiral_disk') {
+                        let diskCenterX = width / 2;
+                        let diskCenterY = height * 0.3;
+                        let angle = (time * 0.3) + this.orbitOffset + (this.orbitRadius * 0.015);
+                        harmTargetX = diskCenterX + Math.cos(angle) * this.orbitRadius * 1.8;
+                        harmTargetY = diskCenterY + Math.sin(angle) * this.orbitRadius * 0.25; 
+                        this.dz += (Math.sin(angle) * 0.5 - this.dz) * currentHarmony * 0.1;
+                    } else {
+                        harmTargetX = (width / 2) + Math.sin(time * 0.18) * (width * 0.3);
+                        harmTargetY = (height * 0.3) + Math.cos(time * 0.25) * (height * 0.15);
+                    }
+                    
+                    targetX = targetX + (harmTargetX - targetX) * currentHarmony;
+                    targetY = targetY + (harmTargetY - targetY) * currentHarmony;
+                }
+                
+                let distToSwarmCenter = Math.hypot(mouse.x - targetX, mouse.y - targetY);
+                let attractionFalloff = Math.max(0, 1 - (distToSwarmCenter / 500));
+
+                this.isFollowingMouse = false;
+                if (this.isMouseAttracted && mouse.x > 0 && mouse.y > 0 && attractionFalloff > this.mouseLoyaltyThreshold) {
+                    targetX = mouse.x;
+                    targetY = Math.min(mouse.y, height * 0.45); 
+                    this.isFollowingMouse = true;
+                }
+
+                let dx = targetX - this.x;
+                let dy = targetY - this.y;
+                let perspectiveDy = dy * 2.5; 
+                let distToTarget = Math.sqrt(dx * dx + perspectiveDy * perspectiveDy);
+                
+                let pull = distToTarget * 0.00004; 
+                this.vx += dx * pull;
+                this.vy += dy * pull;
+
+                if (distToTarget > 0) {
+                    let tangX = -perspectiveDy / distToTarget;
+                    let tangY = dx / distToTarget;
+                    let spinForce = 0.25 * this.curveDirection; 
+                    this.vx += tangX * spinForce;
+                    this.vy += (tangY / 2.5) * spinForce; 
+                }
+
+                if (this.breakoutTimer > 0) {
+                    this.breakoutTimer--;
+                    this.vx += this.breakoutForce.x;
+                    this.vy += this.breakoutForce.y;
+                } else if (Math.random() < 0.0005) { 
+                    this.breakoutTimer = 40 + Math.random() * 40; 
+                    let angle = (this.faction / 5) * Math.PI * 2 + (Math.random() - 0.5);
+                    this.breakoutForce.x = Math.cos(angle) * 1.2;
+                    this.breakoutForce.y = Math.sin(angle) * 1.2;
+                }
+
+                if (!this.isFollowingMouse) {
+                    let mDx = this.x - mouse.x;
+                    let mDy = this.y - mouse.y;
+                    let mDist = Math.hypot(mDx, mDy);
+                    if (mDist < 120 && mDist > 0) {
+                        let mousePush = (120 - mDist) * 0.02;
+                        this.vx += (mDx / mDist) * mousePush;
+                        this.vy += (mDy / mDist) * mousePush;
+                    }
+                }
+
+                // --- [NEW] 3D Structure Avoidance & Sea Gradients ---
+                let rockCenterX = width / 2;
+                let rockCenterY = height * 0.45;
+                let distToRock = Math.hypot(this.x - rockCenterX, this.y - rockCenterY);
+                
+                // Repelled dynamically around the central Rock structure in 3D
+                if (distToRock < 160) {
+                    let repel = Math.pow(1.0 - (distToRock / 160), 2);
+                    this.vx += ((this.x - rockCenterX) / distToRock) * repel * 0.6;
+                    this.vy += ((this.y - rockCenterY) / distToRock) * repel * 0.6;
+                    // Force the birds to pick a side (Background vs Foreground) and warp around it
+                    this.dz += (this.z > 50 ? 1 : -1) * repel * 0.8; 
+                }
+
+                // Gradient Fear of the Sea Horizon (2/5ths from the bottom)
+                let seaLevel = height * 0.6;
+                let distToSea = seaLevel - this.y;
+                
+                if (distToSea > 0 && distToSea < 150) {
+                    let seaFear = Math.pow(1.0 - (distToSea / 150), 2);
+                    this.vy -= seaFear * 0.4; // Push up to avoid skimming
+                    this.vx += (Math.random() - 0.5) * seaFear * 0.5; // Frightened scattering
+                } else if (distToSea <= 0) {
+                    // Firmly bounce them if they breach the water, but no harsh clamped lines
+                    this.vy -= 0.6; 
+                }
+
+                let windTime = time * 0.15;
+                let scale = 0.004;
+                let pWindX = Math.sin(this.x * scale + windTime) 
+                           + 0.5 * Math.sin(this.y * scale * 2 - windTime * 1.5)
+                           + 0.25 * Math.sin(this.x * scale * 4 + windTime * 2.2);
+                let pWindY = Math.cos(this.y * scale + windTime) 
+                           + 0.5 * Math.cos(this.x * scale * 2 + windTime * 1.3)
+                           + 0.25 * Math.cos(this.y * scale * 4 - windTime * 2.5);
+                this.vx += pWindX * 0.15;
+                this.vy += pWindY * 0.15;
+                this.vx += (Math.random() - 0.5) * 0.3;
+                this.vy += (Math.random() - 0.5) * 0.3;
+
+                if (globalFlip.timer > 0 && this.faction === globalFlip.faction) {
+                    this.dz += globalFlip.zDirection * 0.8; 
+                    let bankForce = 0.12;
+                    let tempVx = this.vx;
+                    this.vx += this.vy * bankForce * globalFlip.zDirection;
+                    this.vy -= tempVx * bankForce * globalFlip.zDirection;
+                } else {
+                    this.dz += (Math.random() - 0.5) * 0.1;
+                    this.dz += (50 - this.z) * 0.005;
+                }
+                
+                if (this.z > 95) this.dz -= 0.4;
+                if (this.z < 10) this.dz += 0.4; 
+
+                const speed2D = Math.hypot(this.vx, this.vy);
+                const descentRatio = speed2D > 0.01 ? this.vy / speed2D : 0;
+
+                this.kineticBoost += descentRatio * 0.018;
+                this.kineticBoost  = Math.max(0, Math.min(0.85, this.kineticBoost));
+                this.kineticBoost *= 0.988; 
+
+                if (descentRatio < -0.2) {
+                    const climbDrag = 1.0 - ((-descentRatio - 0.2) * 0.022);
+                    this.vx *= climbDrag;
+                    this.vy *= climbDrag;
+                }
+
+                // Reduced global minimum and maximum speeds by 30%
+                const maxSpeed = 2.24; // Was 3.2
+                const minSpeed = 0.84; // Was 1.2
+                const effectiveMax = maxSpeed * (1.0 + this.kineticBoost * 0.9);
+                let speed3D = Math.hypot(this.vx, this.vy, this.dz);
+
+                if (speed3D > effectiveMax) {
+                    this.vx = (this.vx / speed3D) * effectiveMax;
+                    this.vy = (this.vy / speed3D) * effectiveMax;
+                    this.dz = (this.dz / speed3D) * effectiveMax;
+                } else if (speed3D < minSpeed && speed3D > 0) {
+                    this.vx = (this.vx / speed3D) * minSpeed;
+                    this.vy = (this.vy / speed3D) * minSpeed;
+                    this.dz = (this.dz / speed3D) * minSpeed;
+                }
+
+                let parallax = (this.z / 100) * 0.6 + 0.4;
+                this.x += this.vx * parallax;
+                this.y += this.vy * parallax;
+                this.z += this.dz;
+            }
+
+            draw(ctx) {
+                let speed2D = Math.hypot(this.vx, this.vy);
+                let speed3D = Math.hypot(speed2D, this.dz);
+                let profile = speed3D > 0.01 ? speed2D / speed3D : 1; 
+
+                let zNorm = Math.max(0.02, this.z / 100);
+                let sizeCurve = Math.sqrt(zNorm); 
+
+                let baseScale = sizeCurve * 2.2 + 1.0; 
+                let depthAlpha = sizeCurve * 0.7 + 0.15;
+                
+                let alpha = depthAlpha * (0.6 + 0.4 * profile); 
+                let angle = Math.atan2(this.vy, this.vx);
+                
+                let widthScale = baseScale * Math.max(0.35, profile); 
+                let lengthScale = baseScale * Math.max(0.35, profile); 
+                
+                ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(this.x + Math.cos(angle) * lengthScale * 2.5, this.y + Math.sin(angle) * lengthScale * 2.5);
+                ctx.lineTo(this.x + Math.cos(angle + 2.5) * widthScale * 1.5, this.y + Math.sin(angle + 2.5) * widthScale * 1.5);
+                ctx.lineTo(this.x + Math.cos(angle - 2.5) * widthScale * 1.5, this.y + Math.sin(angle - 2.5) * widthScale * 1.5);
+                ctx.fill();
+            }
+        }
+
+        const flock = Array.from({ length: 2000 }, () => new Boid()); 
+
+        document.getElementById('birdCount').addEventListener('input', (e) => {
+            const newCount = parseInt(e.target.value);
+            document.getElementById('birdCountLabel').innerText = newCount;
+            if (newCount > flock.length) {
+                const toAdd = newCount - flock.length;
+                for (let i = 0; i < toAdd; i++) flock.push(new Boid());
+            } else if (newCount < flock.length) {
+                flock.splice(newCount);
+            }
+        });
+
+        const HARMONY_INTERVAL  = 3000;  
+        const HARMONY_FADE      = 120;   
+        const HARMONY_HOLD      = 600;   
+        const HARMONY_TOTAL     = HARMONY_FADE * 2 + HARMONY_HOLD;
+
+        let harmonyCountdown  = HARMONY_INTERVAL + Math.floor(Math.random() * 300);
+        let harmonyTimer      = 0;   
+        let harmonyStrength   = 0;   
+        let harmonyVx         = 0;
+        let harmonyVy         = 0;
+
+        function triggerHarmony() {
+            const angle = (Math.random() * Math.PI * 0.6 - Math.PI * 0.3)
+                        + (Math.random() > 0.5 ? 0 : Math.PI);
+            // Reduced harmony unification speed by 30%
+            const spd   = 1.26;   // Was 1.8
+            harmonyVx   = Math.cos(angle) * spd;
+            harmonyVy   = Math.sin(angle) * spd;
+            harmonyTimer     = HARMONY_TOTAL;
+            harmonyCountdown = HARMONY_INTERVAL + Math.floor(Math.random() * 300);
+            currentHarmonyType = Math.random() < 0.6 ? 'spiral_disk' : 'vortex';
+        }
+
+        function extractPhysicsToAudio(currentHarmony) {
+            if (flock.length === 0) {
+                audioMetrics.swarmDensity = 0;
+                audioMetrics.chaos = 0;
+                audioMetrics.risingDensity = 0;
+                audioMetrics.harmonyStrength = currentHarmony;
+                updateAudioEngine();
+                return;
+            }
+
+            let sumDist = 0;
+            let sumDv = 0;
+            let cursorFollowCount = 0;
+            let risingCount = 0; 
+            
+            let f1x = 0, f1y = 0, f1z = 0, f1c = 0;
+            let f2x = 0, f2y = 0, f2z = 0, f2c = 0;
+            let f3x = 0, f3y = 0, f3z = 0, f3c = 0;
+
+            for (let b of flock) {
+                if (b.isFollowingMouse) cursorFollowCount++;
+                if (b.vy < -0.5) risingCount++; 
+
+                if (b.faction === 0) {
+                    f1x += b.x; f1y += b.y; f1z += b.z; f1c++;
+                } else if (b.faction === 1) {
+                    f2x += b.x; f2y += b.y; f2z += b.z; f2c++;
+                } else {
+                    f3x += b.x; f3y += b.y; f3z += b.z; f3c++;
+                }
+                
+                let dv = Math.hypot(b.vx - b.lastVx, b.vy - b.lastVy);
+                sumDv += dv;
+                b.lastVx = b.vx;
+                b.lastVy = b.vy;
+            }
+
+            let avgX = (f1x + f2x + f3x) / flock.length;
+            let avgY = (f1y + f2y + f3y) / flock.length;
+            
+            for (let b of flock) sumDist += Math.hypot(b.x - avgX, b.y - avgY);
+            let spread = sumDist / flock.length;
+            
+            let populationScale = Math.pow(flock.length / 2000, 1.5);
+            audioMetrics.swarmDensity = Math.max(0, 1.0 - (spread / 200)) * populationScale; 
+            audioMetrics.chaos = Math.max(0, Math.min(1, (sumDv / flock.length) * 3));
+            audioMetrics.cursorDensity = Math.max(0, Math.min(1.0, cursorFollowCount / 200));
+            audioMetrics.risingDensity = Math.max(0, Math.min(1.0, risingCount / (flock.length * 0.2 + 1)));
+            audioMetrics.harmonyStrength = currentHarmony;
+            audioMetrics.harmonyType = currentHarmonyType;
+            
+            audioMetrics.fac1Pos.x = f1c ? ((f1x / f1c) / width * 2 - 1) * 5 : 0;
+            audioMetrics.fac1Pos.y = f1c ? -((f1y / f1c) / height * 2 - 1) * 5 : 0;
+            audioMetrics.fac1Pos.z = f1c ? -((f1z / f1c) / 100) * 5 : 0; 
+            audioMetrics.fac2Pos.x = f2c ? ((f2x / f2c) / width * 2 - 1) * 5 : 0;
+            audioMetrics.fac2Pos.y = f2c ? -((f2y / f2c) / height * 2 - 1) * 5 : 0;
+            audioMetrics.fac2Pos.z = f2c ? -((f2z / f2c) / 100) * 5 : 0;
+            audioMetrics.fac3Pos.x = f3c ? ((f3x / f3c) / width * 2 - 1) * 5 : 0;
+            audioMetrics.fac3Pos.y = f3c ? -((f3y / f3c) / height * 2 - 1) * 5 : 0;
+            audioMetrics.fac3Pos.z = f3c ? -((f3z / f3c) / 100) * 5 : 0;
+            
+            let f1Elevation = f1c ? 1.0 - ((f1y / f1c) / (height * 0.5)) : 0.5;
+            let f2Elevation = f2c ? 1.0 - ((f2y / f2c) / (height * 0.5)) : 0.5;
+            let f3Elevation = f3c ? 1.0 - ((f3y / f3c) / (height * 0.5)) : 0.5;
+            audioMetrics.fac1Voices = Math.max(3, Math.min(5, 3 + Math.floor(f1Elevation * 3)));
+            audioMetrics.fac2Voices = Math.max(3, Math.min(5, 3 + Math.floor(f2Elevation * 3)));
+            audioMetrics.fac3Voices = Math.max(3, Math.min(5, 3 + Math.floor(f3Elevation * 3)));
+
+            let baseCutoff = Math.max(200, Math.min(3000, 3000 - (avgY / (height * 0.5)) * 2800));
+            audioMetrics.cutoff = baseCutoff + (audioMetrics.chaos * 4000); 
+
+            updateAudioEngine();
+        }
+
+        // --- [CHANGED] 3D Rendering Pipeline ---
+        function drawBoids(currentHarmony) {
+            boidsCtx.clearRect(0, 0, width, height);
+            
+            // 1. Update Pass (Calculate all physics before drawing to ensure Z-depth is accurate)
+            for (let boid of flock) {
+                boid.update(flock, currentHarmony); 
+            }
+            
+            // 2. Draw Deep Background Birds (z < 50)
+            for (let boid of flock) {
+                if (boid.z < 50) boid.draw(boidsCtx);
+            }
+            
+            // 3. Draw The ASCII Sea
+            // [CHANGED] Shifted left to hide borders, anchored beautifully
+            boidsCtx.drawImage(seaCanvas, -50, height * 0.6 - 10);
+            
+            // 4. Draw The Rock (Auto-swaps when image loads successfully on Github!)
+            if (rockImageLoaded && rockImg.complete && rockImg.naturalWidth !== 0) {
+                let imgWidth = rockImg.width;
+                let imgHeight = rockImg.height;
+                let scale = Math.min((width * 0.7) / imgWidth, (height * 0.5) / imgHeight);
+                let drawW = imgWidth * scale;
+                let drawH = imgHeight * scale;
+                let drawX = (width / 2) - (drawW / 2);
+                let drawY = (height * 0.6) - drawH * 0.95; // Anchors bottom edge 5% into the sea
+
+                boidsCtx.globalCompositeOperation = 'multiply';
+                boidsCtx.globalAlpha = 0.85;
+                boidsCtx.drawImage(rockImg, drawX, drawY, drawW, drawH);
+                boidsCtx.globalCompositeOperation = 'source-over';
+                boidsCtx.globalAlpha = 1.0;
+            } else {
+                let rockBaseY = height * 0.6;
+                let rockPeakY = height * 0.25;
+                
+                boidsCtx.fillStyle = '#ffffff';
+                boidsCtx.beginPath();
+                boidsCtx.moveTo(width / 2, rockPeakY);
+                boidsCtx.lineTo(width / 2 - 140, rockBaseY);
+                boidsCtx.lineTo(width / 2 + 140, rockBaseY);
+                boidsCtx.closePath();
+                boidsCtx.fill();
+                
+                boidsCtx.strokeStyle = '#cccccc';
+                boidsCtx.lineWidth = 2;
+                boidsCtx.stroke();
+                
+                boidsCtx.fillStyle = '#999999';
+                boidsCtx.font = '14px Times New Roman';
+                boidsCtx.textAlign = 'center';
+                boidsCtx.fillText("PLACEHOLDER ROCK", width / 2, height * 0.5);
+            }
+            
+            // 5. Draw Foreground Birds (z >= 50)
+            for (let boid of flock) {
+                if (boid.z >= 50) boid.draw(boidsCtx);
+            }
+        }
+
+        function animate() {
+            if (globalFlip.timer > 0) {
+                globalFlip.timer--;
+            } else {
+                nextFlipCountdown--;
+                if (nextFlipCountdown <= 0) {
+                    globalFlip.timer = 60 + Math.random() * 40; 
+                    globalFlip.faction = Math.floor(Math.random() * 3); 
+                    globalFlip.zDirection = Math.random() > 0.5 ? 1 : -1; 
+                    nextFlipCountdown = 400 + Math.random() * 400; 
+                    triggerZPulse(globalFlip.zDirection); 
+                }
+            }
+
+            if (harmonyTimer > 0) {
+                harmonyTimer--;
+                const elapsed = HARMONY_TOTAL - harmonyTimer;
+
+                if (elapsed < HARMONY_FADE) {
+                    const t = elapsed / HARMONY_FADE;
+                    harmonyStrength = t * t * (3 - 2 * t);
+                } else if (elapsed < HARMONY_FADE + HARMONY_HOLD) {
+                    harmonyStrength = 1.0;
+                } else {
+                    const t = (elapsed - HARMONY_FADE - HARMONY_HOLD) / HARMONY_FADE;
+                    harmonyStrength = 1.0 - t * t * (3 - 2 * t);
+                }
+            } else {
+                harmonyStrength = 0;
+                harmonyCountdown--;
+                if (harmonyCountdown <= 0) triggerHarmony();
+            }
+
+            // [NEW] Trigger the ASCII sea character swap every ~0.6 seconds for a shimmering effect
+            if (time - lastSeaUpdate > 0.6) {
+                generateAsciiSea();
+                lastSeaUpdate = time;
+            }
+
+            extractPhysicsToAudio(harmonyStrength);
+            drawBoids(harmonyStrength);
+            time += 0.05; 
+            requestAnimationFrame(animate);
+        }
+        
+        window.onload = function() {
+            animate();
+        };
+
+    </script>
+</body>
+</html>

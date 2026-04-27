@@ -28,7 +28,7 @@
         }
 
         header h1 {
-            font-size: 3.5rem; /* Increased size as requested */
+            font-size: 3.5rem; 
             font-weight: normal;
             margin: 0;
             letter-spacing: -0.03em;
@@ -37,7 +37,7 @@
 
         .main-content {
             max-width: 700px;
-            margin-top: -10vh; /* Visual balance */
+            margin-top: -10vh; 
         }
 
         .bio {
@@ -73,7 +73,7 @@
             align-items: center;
         }
 
-        /* The Index Number */
+        
         nav a span {
             font-family: monospace;
             font-size: 0.8rem;
@@ -109,7 +109,7 @@
             font-size: 0.85rem;
             color: var(--text-secondary);
             letter-spacing: 0.1em;
-            border-top: 1px solid var(--accent);
+            border-top: 0px solid var(--accent);
             padding-top: 20px;
         }
 
@@ -117,7 +117,7 @@
             font-family: monospace;
         }
 
-        /* Subtle background texture */
+        
         .grid {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -125,6 +125,25 @@
             background-size: 40px 40px;
             z-index: -1;
             opacity: 0.3;
+        }
+
+        
+        #fade-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+        }
+
+        #fade-overlay.active {
+            opacity: 1;
+            pointer-events: all;
         }
 
         @media (max-width: 768px) {
@@ -137,6 +156,7 @@
 </head>
 <body>
 
+    <div id="fade-overlay"></div>
     <div class="grid"></div>
 
     <header>
@@ -145,20 +165,43 @@
 
     <div class="main-content">
         <div class="bio">
-            engineer based in montréal. 
+            engineer based in montreal
             <span></span>
         </div>
 
         <nav>
-            <!-- [LINK LOGIC] These paths assume the folders exist in your repo -->
-            <a href="boids/"><span>01</span> boids</a>
-            <a href="matl_me/"><span>02</span> matl_me</a>
+            <a href="boids/" class="transition-link"><span>01</span> boids</a>
+            <a href="match-materia/" class="transition-link"><span>02</span> match-materia</a>
         </nav>
     </div>
 
     <footer>
-      
     </footer>
+
+    <script>
+   
+        document.querySelectorAll('.transition-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = this.getAttribute('href');
+                const overlay = document.getElementById('fade-overlay');
+                
+                overlay.classList.add('active');
+                
+    
+                setTimeout(() => {
+                    window.location.href = target;
+                }, 800);
+            });
+        });
+
+
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                document.getElementById('fade-overlay').classList.remove('active');
+            }
+        });
+    </script>
 
 </body>
 </html>
